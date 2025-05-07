@@ -12,7 +12,18 @@ export default function Home() {
             srclang: "fa",
             default: true,
           },
+          
         ]}
+        ads={[
+          {
+            title: "تبلیغ تستی",
+            type: "pre-roll",
+            media: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+            skipAfter: 5,
+            clickThrough: "https://mobinhost.com",
+          },
+        ]}
+        watermarkText="reza@example.com"
       />
     </main>
   );

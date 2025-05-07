@@ -14,31 +14,85 @@ interface SubtitleTrack {
   default?: boolean;
 }
 
+interface AdTrack {
+  title: string;
+  type: "pre-roll";
+  media: string;
+  skipAfter?: number;
+  clickThrough?: string;
+}
+
 interface PlayerProps {
   src: string;
   poster?: string;
   subtitles?: SubtitleTrack[];
+  ads?: AdTrack[];
+  watermarkText?: string;
 }
 
-const adData = [
-  {
-    title: "تبلیغ تستی",
-    type: "pre-roll",
-    media: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-    skipAfter: 5,
-    clickThrough: "https://mobinhost.com",
-  },
-];
-
-const VideoPlayer: React.FC<PlayerProps> = ({ src, poster, subtitles }) => {
+const VideoPlayer: React.FC<PlayerProps> = ({
+  src,
+  poster,
+  subtitles,
+  ads = [],
+  watermarkText,
+}) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerRef = useRef<Player | null>(null);
+  const wasPlayingRef = useRef(false);
+
+  const addWatermark = (player: Player, text: string) => {
+    const watermark = document.createElement("div");
+    watermark.innerText = text;
+    watermark.classList.add("watermark");
+
+    Object.assign(watermark.style, {
+      position: "absolute",
+      opacity: "0.4",
+      color: "white",
+      fontSize: "12px",
+      zIndex: 9999,
+      pointerEvents: "none",
+      transition: "all 0.5s ease",
+    });
+
+    const positions = [
+      { top: "10px", left: "10px" },
+      { top: "10px", right: "10px", left: "" },
+      { bottom: "10px", left: "10px", top: "", right: "" },
+      { bottom: "10px", right: "10px", top: "", left: "" },
+    ];
+
+    let current = 0;
+
+    const moveWatermark = () => {
+      const pos = positions[current];
+      Object.assign(watermark.style, {
+        top: pos.top || "",
+        right: pos.right || "",
+        bottom: pos.bottom || "",
+        left: pos.left || "",
+      });
+      current = (current + 1) % positions.length;
+    };
+
+    const interval = setInterval(moveWatermark, 10000);
+    moveWatermark();
+
+    player.el()?.appendChild(watermark);
+
+    player.on("dispose", () => {
+      clearInterval(interval);
+    });
+  };
 
   const initializePlayer = () => {
     if (!videoRef.current) return;
 
-    // اضافه کردن دستی تگ‌های زیرنویس به تگ <video>
-    if (subtitles?.length) {
+    if (
+      subtitles?.length &&
+      videoRef.current.querySelectorAll("track").length === 0
+    ) {
       subtitles.forEach((track) => {
         const trackElement = document.createElement("track");
         trackElement.kind = "subtitles";
@@ -61,59 +115,62 @@ const VideoPlayer: React.FC<PlayerProps> = ({ src, poster, subtitles }) => {
     playerRef.current = player;
 
     player.ready(() => {
-      // کیفیت برای HLS
       player.hlsQualitySelector({ displayCurrentQuality: true });
 
-      const ad = adData[0];
+      const ad = ads[0];
       const mainSource = {
         src,
         type: "application/x-mpegURL",
       };
 
-      let adPlaying = true;
-      player.src({ src: ad.media, type: "video/mp4" });
+      let adPlaying = false;
 
-      const playMainVideo = () => {
-        adPlaying = false;
+      if (ad) {
+        adPlaying = true;
+        player.src({ src: ad.media, type: "video/mp4" });
+
+        const playMainVideo = () => {
+          adPlaying = false;
+          player.src(mainSource);
+          player.play();
+        };
+
+        player.on("ended", () => {
+          if (adPlaying) playMainVideo();
+        });
+
+        if (ad.skipAfter !== undefined) {
+          setTimeout(() => {
+            const skipBtn = document.createElement("button");
+            skipBtn.textContent = "رد کردن تبلیغ";
+            Object.assign(skipBtn.style, {
+              position: "absolute",
+              bottom: "20px",
+              right: "20px",
+              zIndex: "999",
+              padding: "8px 12px",
+              background: "#000",
+              color: "#fff",
+              border: "none",
+              cursor: "pointer",
+            });
+            skipBtn.onclick = () => {
+              skipBtn.remove();
+              playMainVideo();
+            };
+            player.el()?.appendChild(skipBtn);
+          }, ad.skipAfter * 1000);
+        }
+
+        player.el()?.addEventListener("click", () => {
+          if (adPlaying && ad.clickThrough) {
+            window.open(ad.clickThrough, "_blank");
+          }
+        });
+      } else {
         player.src(mainSource);
-        player.play();
-      };
-
-      player.on("ended", () => {
-        if (adPlaying) playMainVideo();
-      });
-
-      // دکمه رد کردن تبلیغ
-      if (ad.skipAfter !== undefined) {
-        setTimeout(() => {
-          const skipBtn = document.createElement("button");
-          skipBtn.textContent = "رد کردن تبلیغ";
-          Object.assign(skipBtn.style, {
-            position: "absolute",
-            bottom: "20px",
-            right: "20px",
-            zIndex: "999",
-            padding: "8px 12px",
-            background: "#000",
-            color: "#fff",
-            border: "none",
-            cursor: "pointer",
-          });
-          skipBtn.onclick = () => {
-            skipBtn.remove();
-            playMainVideo();
-          };
-          player.el()?.appendChild(skipBtn);
-        }, ad.skipAfter * 1000);
       }
 
-      player.el()?.addEventListener("click", () => {
-        if (adPlaying && ad.clickThrough) {
-          window.open(ad.clickThrough, "_blank");
-        }
-      });
-
-      // فعال کردن زیرنویس
       player.on("loadedmetadata", () => {
         const tracks = player.textTracks();
         for (let i = 0; i < tracks.length; i++) {
@@ -122,15 +179,76 @@ const VideoPlayer: React.FC<PlayerProps> = ({ src, poster, subtitles }) => {
           }
         }
       });
+
+      if (watermarkText) {
+        addWatermark(player, watermarkText);
+      }
     });
   };
 
   useEffect(() => {
     initializePlayer();
+
+    const handleVisibility = () => {
+      const player = playerRef.current;
+      const playerEl = player?.el();
+      if (!player || !playerEl) return;
+
+      const existingOverlay = document.getElementById("pause-overlay");
+
+      if (document.visibilityState === "hidden") {
+        if (!player.paused()) {
+          wasPlayingRef.current = true;
+          player.pause();
+        } else {
+          wasPlayingRef.current = false;
+        }
+
+        if (!existingOverlay) {
+          const overlay = document.createElement("div");
+          overlay.id = "pause-overlay";
+          Object.assign(overlay.style, {
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.7)",
+            color: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "16px",
+            zIndex: "10000",
+          });
+          overlay.innerText = "برای ادامه، لطفاً به تب مرورگر بازگردید.";
+          playerEl.appendChild(overlay);
+        }
+      } else {
+        const overlay = document.getElementById("pause-overlay");
+        if (overlay) overlay.remove();
+        if (wasPlayingRef.current) {
+          player.muted(false);
+          player.play();
+        }
+      }
+    };
+
+    const disableRightClick = (e: MouseEvent) => {
+      if (videoRef.current && videoRef.current.contains(e.target as Node)) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    document.addEventListener("contextmenu", disableRightClick);
+
     return () => {
       playerRef.current?.dispose();
+      document.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("contextmenu", disableRightClick);
     };
-  }, [src]);
+  }, [src, watermarkText]);
 
   return (
     <div data-vjs-player>
