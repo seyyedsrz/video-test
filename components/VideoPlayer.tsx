@@ -15,7 +15,7 @@ interface SubtitleTrack {
 }
 
 interface PlayerProps {
-  src: string; // آدرس master.m3u8
+  src: string;
   poster?: string;
   subtitles?: SubtitleTrack[];
 }
@@ -24,7 +24,7 @@ const adData = [
   {
     title: "تبلیغ تستی",
     type: "pre-roll",
-    media: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4", // ویدیوی تبلیغاتی
+    media: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
     skipAfter: 5,
     clickThrough: "https://mobinhost.com",
   },
@@ -37,47 +37,41 @@ const VideoPlayer: React.FC<PlayerProps> = ({ src, poster, subtitles }) => {
   const initializePlayer = () => {
     if (!videoRef.current) return;
 
+    // اضافه کردن دستی تگ‌های زیرنویس به تگ <video>
+    if (subtitles?.length) {
+      subtitles.forEach((track) => {
+        const trackElement = document.createElement("track");
+        trackElement.kind = "subtitles";
+        trackElement.label = track.label;
+        trackElement.src = track.src;
+        trackElement.srclang = track.srclang;
+        if (track.default) trackElement.default = true;
+        videoRef.current!.appendChild(trackElement);
+      });
+    }
+
     const player = videojs(videoRef.current, {
       controls: true,
       autoplay: false,
       preload: "auto",
       fluid: true,
       poster,
-      sources: [],
     });
 
     playerRef.current = player;
 
-    // افزودن قابلیت انتخاب کیفیت برای HLS
-    player.hlsQualitySelector({ displayCurrentQuality: true });
-
-    // افزودن زیرنویس‌ها (در صورت وجود)
-    if (subtitles?.length) {
-      subtitles.forEach((track) => {
-        player.addRemoteTextTrack(
-          {
-            kind: "subtitles",
-            label: track.label,
-            src: track.src,
-            srclang: track.srclang,
-            default: track.default || false,
-          },
-          false
-        );
-      });
-    }
-
-    const ad = adData[0];
-    const mainSource = {
-      src,
-      type: "application/x-mpegURL",
-    };
-
     player.ready(() => {
-      // شروع با تبلیغ
-      player.src({ src: ad.media, type: "video/mp4" });
+      // کیفیت برای HLS
+      player.hlsQualitySelector({ displayCurrentQuality: true });
+
+      const ad = adData[0];
+      const mainSource = {
+        src,
+        type: "application/x-mpegURL",
+      };
 
       let adPlaying = true;
+      player.src({ src: ad.media, type: "video/mp4" });
 
       const playMainVideo = () => {
         adPlaying = false;
@@ -89,20 +83,22 @@ const VideoPlayer: React.FC<PlayerProps> = ({ src, poster, subtitles }) => {
         if (adPlaying) playMainVideo();
       });
 
-      // افزودن دکمه رد کردن تبلیغ
+      // دکمه رد کردن تبلیغ
       if (ad.skipAfter !== undefined) {
         setTimeout(() => {
           const skipBtn = document.createElement("button");
           skipBtn.textContent = "رد کردن تبلیغ";
-          skipBtn.style.position = "absolute";
-          skipBtn.style.bottom = "20px";
-          skipBtn.style.right = "20px";
-          skipBtn.style.zIndex = "999";
-          skipBtn.style.padding = "8px 12px";
-          skipBtn.style.background = "#000";
-          skipBtn.style.color = "#fff";
-          skipBtn.style.border = "none";
-          skipBtn.style.cursor = "pointer";
+          Object.assign(skipBtn.style, {
+            position: "absolute",
+            bottom: "20px",
+            right: "20px",
+            zIndex: "999",
+            padding: "8px 12px",
+            background: "#000",
+            color: "#fff",
+            border: "none",
+            cursor: "pointer",
+          });
           skipBtn.onclick = () => {
             skipBtn.remove();
             playMainVideo();
@@ -111,10 +107,19 @@ const VideoPlayer: React.FC<PlayerProps> = ({ src, poster, subtitles }) => {
         }, ad.skipAfter * 1000);
       }
 
-      // کلیک روی تبلیغ
       player.el()?.addEventListener("click", () => {
         if (adPlaying && ad.clickThrough) {
           window.open(ad.clickThrough, "_blank");
+        }
+      });
+
+      // فعال کردن زیرنویس
+      player.on("loadedmetadata", () => {
+        const tracks = player.textTracks();
+        for (let i = 0; i < tracks.length; i++) {
+          if (tracks[i].kind === "subtitles") {
+            tracks[i].mode = "showing";
+          }
         }
       });
     });
