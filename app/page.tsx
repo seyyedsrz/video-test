@@ -4,7 +4,7 @@ export default function Home() {
   return (
     <main className="p-6">
       <VideoPlayer
-        src="http://localhost:3000/master.m3u8"
+        src="https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8"
         subtitles={[
           {
             label: "فارسی",
