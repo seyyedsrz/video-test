@@ -4,11 +4,12 @@ export default function Home() {
   return (
     <main className="p-6">
       <VideoPlayer
-        src="https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8"
+        // src="https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8"
+        src="http://localhost:8080/short/short.m3u8"
         subtitles={[
           {
             label: "فارسی",
-            src: "http://localhost:3000/sbtitles/output.vtt",
+            src: "http://localhost:8080/sbtitles/output1.vtt",
             srclang: "fa",
             default: true,
           },
