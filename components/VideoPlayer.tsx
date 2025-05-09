@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import videojs from "video.js";
 import type Player from "video.js/dist/types/player";
 import "video.js/dist/video-js.css";
 import "videojs-contrib-quality-levels";
 import "videojs-hls-quality-selector";
-
+import QuestionModal from "./QuestionModal";
 
 interface SubtitleTrack {
   label: string;
@@ -23,12 +23,22 @@ interface AdTrack {
   clickThrough?: string;
 }
 
+interface Question {
+  question_text: string;
+  status: string;
+  time: string;
+  video: number;
+  type: "selective";
+  choices: string[];
+}
+
 interface PlayerProps {
   src: string;
   poster?: string;
   subtitles?: SubtitleTrack[];
   ads?: AdTrack[];
   watermarkText?: string;
+  questions?: Question[];
 }
 
 const VideoPlayer: React.FC<PlayerProps> = ({
@@ -37,10 +47,24 @@ const VideoPlayer: React.FC<PlayerProps> = ({
   subtitles,
   ads = [],
   watermarkText,
+  questions = [],
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerRef = useRef<Player | null>(null);
   const wasPlayingRef = useRef(false);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const shownTimes = useRef<Set<string>>(new Set());
+
+  const parseTimeToSeconds = (timeStr: string): number => {
+    const [h, m, s] = timeStr.split(":").map(Number);
+    return h * 3600 + m * 60 + s;
+  };
+
+  const handleAnswer = (choice: string) => {
+    console.log("کاربر انتخاب کرد:", choice);
+    setCurrentQuestion(null);
+    playerRef.current?.play();
+  };
 
   const addWatermark = (player: Player, text: string) => {
     const watermark = document.createElement("div");
@@ -59,21 +83,16 @@ const VideoPlayer: React.FC<PlayerProps> = ({
 
     const positions = [
       { top: "10px", left: "10px" },
-      { top: "10px", right: "10px", left: "" },
-      { bottom: "10px", left: "10px", top: "", right: "" },
-      { bottom: "10px", right: "10px", top: "", left: "" },
+      { top: "10px", right: "10px" },
+      { bottom: "10px", left: "10px" },
+      { bottom: "10px", right: "10px" },
     ];
 
     let current = 0;
 
     const moveWatermark = () => {
       const pos = positions[current];
-      Object.assign(watermark.style, {
-        top: pos.top || "",
-        right: pos.right || "",
-        bottom: pos.bottom || "",
-        left: pos.left || "",
-      });
+      Object.assign(watermark.style, pos);
       current = (current + 1) % positions.length;
     };
 
@@ -82,9 +101,7 @@ const VideoPlayer: React.FC<PlayerProps> = ({
 
     player.el()?.appendChild(watermark);
 
-    player.on("dispose", () => {
-      clearInterval(interval);
-    });
+    player.on("dispose", () => clearInterval(interval));
   };
 
   const initializePlayer = () => {
@@ -181,6 +198,24 @@ const VideoPlayer: React.FC<PlayerProps> = ({
         }
       });
 
+      // 🟡 QUESTION CHECK
+      player.on("timeupdate", () => {
+        const currentTime = Math.floor(player.currentTime());
+
+        questions?.forEach((q) => {
+          const qTime = parseTimeToSeconds(q.time);
+          if (
+            q.status === "active" &&
+            currentTime === qTime &&
+            !shownTimes.current.has(q.time)
+          ) {
+            shownTimes.current.add(q.time);
+            player.pause();
+            setCurrentQuestion(q);
+          }
+        });
+      });
+
       if (watermarkText) {
         addWatermark(player, watermarkText);
       }
@@ -252,7 +287,7 @@ const VideoPlayer: React.FC<PlayerProps> = ({
   }, [src, watermarkText]);
 
   return (
-    <div data-vjs-player>
+    <div data-vjs-player className="relative">
       <video
         ref={videoRef}
         id="videojs-player"
@@ -260,6 +295,15 @@ const VideoPlayer: React.FC<PlayerProps> = ({
         playsInline
         className="video-js vjs-big-play-centered vjs-default-skin"
       />
+      {currentQuestion && (
+        <QuestionModal
+          question={{
+            question_text: currentQuestion.question_text,
+            choices: currentQuestion.choices,
+          }}
+          onSelect={handleAnswer}
+        />
+      )}
     </div>
   );
 };
